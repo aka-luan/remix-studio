@@ -21,6 +21,17 @@ export const ScriptSchema = z.object({
 
 export const PlanSchema = z.object({ analysis: AnalysisSchema, script: ScriptSchema });
 
+export const TranscribedPlanSchema = PlanSchema.extend({
+  transcript: z.string().describe("Verbatim transcript of any speech in the original, or (no speech)"),
+});
+
+export type TranscribedPlan = z.infer<typeof TranscribedPlanSchema>;
+
+export function clampPlan<P extends Plan>(plan: P): P {
+  const hookDurationSec = Math.min(10, Math.max(3, Math.round(plan.script.hookDurationSec)));
+  return { ...plan, script: { ...plan.script, hookDurationSec } };
+}
+
 export type Analysis = z.infer<typeof AnalysisSchema>;
 export type Script = z.infer<typeof ScriptSchema>;
 export type Plan = z.infer<typeof PlanSchema>;
@@ -37,7 +48,7 @@ export type Remix = {
     avatarRefFile: string | null;
   };
   source?: { videoFile: string; durationSec: number; frames: Frame[]; audioFile: string | null };
-  plan?: Plan & { transcript: string };
+  plan?: TranscribedPlan;
   approvedAt?: string;
   avatarFile?: string;
   hookFile?: string;
@@ -54,7 +65,7 @@ export const STEPS = [
   { name: "ingest", label: "Download & extract frames", output: "source" },
   { name: "plan", label: "Analyze & write script", output: "plan" },
   { name: "avatar", label: "Generate avatar (Nano Banana)", output: "avatarFile" },
-  { name: "hook", label: "Animate hook (Kling)", output: "hookFile" },
+  { name: "hook", label: "Animate hook (Gemini Omni)", output: "hookFile" },
   { name: "assemble", label: "Stitch hook + demo (FFmpeg)", output: "finalFile" },
 ] as const satisfies readonly { name: string; label: string; output: keyof Remix }[];
 

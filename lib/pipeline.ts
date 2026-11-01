@@ -1,12 +1,29 @@
 import { readdir, rm } from "node:fs/promises";
-import { planRemix } from "./claude";
-import { generateAvatar, transcribe } from "./gemini";
-import { animateHook } from "./kling";
+import { planWithClaude } from "./claude";
+import { config } from "./config";
+import { animateHook, generateAvatar, planWithGemini, transcribe } from "./gemini";
 import { assemble, downloadVideo, extractAudio, extractFrames, probe } from "./media";
-import { canAutoRun, nextStep, type Remix, type StepName } from "./remix";
+import { canAutoRun, nextStep, type Remix, type StepName, type TranscribedPlan } from "./remix";
 import { artifactPath, remixDir, updateRemix, writeArtifact } from "./store";
 
 type Runner = (remix: Remix) => Promise<Partial<Remix>>;
+
+const PLANNERS: Record<"gemini" | "claude", (remix: Remix) => Promise<TranscribedPlan>> = {
+  gemini: (remix) =>
+    planWithGemini({ video: artifactPath(remix.id, remix.source!.videoFile), product: remix.input.product }),
+  async claude(remix) {
+    const source = remix.source!;
+    const transcript = source.audioFile ? await transcribe(artifactPath(remix.id, source.audioFile)) : "";
+    const plan = await planWithClaude({
+      dir: (f) => artifactPath(remix.id, f),
+      frames: source.frames,
+      durationSec: source.durationSec,
+      transcript,
+      product: remix.input.product,
+    });
+    return { ...plan, transcript };
+  },
+};
 
 const RUNNERS: Record<StepName, Runner> = {
   async ingest(remix) {
@@ -21,16 +38,7 @@ const RUNNERS: Record<StepName, Runner> = {
   },
 
   async plan(remix) {
-    const source = remix.source!;
-    const transcript = source.audioFile ? await transcribe(artifactPath(remix.id, source.audioFile)) : "";
-    const plan = await planRemix({
-      dir: (f) => artifactPath(remix.id, f),
-      frames: source.frames,
-      durationSec: source.durationSec,
-      transcript,
-      product: remix.input.product,
-    });
-    return { plan: { ...plan, transcript } };
+    return { plan: await PLANNERS[config.planner()](remix) };
   },
 
   async avatar(remix) {
@@ -59,6 +67,7 @@ const RUNNERS: Record<StepName, Runner> = {
       hook: remix.hookFile!,
       demo: remix.input.demoFile,
       hookText: remix.plan!.script.hookText,
+      hookDurationSec: remix.plan!.script.hookDurationSec,
     });
     return { finalFile };
   },

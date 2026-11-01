@@ -5,16 +5,12 @@ function required(name: string): string {
 }
 
 export const config = {
+  planner: (): "gemini" | "claude" => (process.env.PLANNER === "claude" ? "claude" : "gemini"),
   claudeModel: () => process.env.CLAUDE_MODEL || "claude-sonnet-5-5",
   geminiApiKey: () => required("GEMINI_API_KEY"),
+  geminiTextModel: () => process.env.GEMINI_TEXT_MODEL || "gemini-flash-latest",
   geminiImageModel: () => process.env.GEMINI_IMAGE_MODEL || "gemini-nano-banana-2.1",
-  geminiTranscribeModel: () => process.env.GEMINI_TRANSCRIBE_MODEL || "gemini-flash-latest",
-  klingModel: () => process.env.KLING_MODEL || "kling-v3.0-i2v",
-  klingMode: (): "std" | "pro" => (process.env.KLING_MODE === "std" ? "std" : "pro"),
-  requireKling: () => {
-    if (process.env.KLINGAI_API_KEY || (process.env.KLINGAI_ACCESS_KEY && process.env.KLINGAI_SECRET_KEY)) return;
-    throw new Error("Missing Kling credentials. Set KLINGAI_API_KEY (or KLINGAI_ACCESS_KEY + KLINGAI_SECRET_KEY) in .env.local.");
-  },
+  geminiVideoModel: () => process.env.GEMINI_VIDEO_MODEL || "gemini-omni-1.1-flash",
   requireAnthropic: () => {
     if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) required("ANTHROPIC_API_KEY");
   },

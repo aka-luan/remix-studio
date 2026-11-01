@@ -174,7 +174,7 @@ export function RemixView({ id }: { id: string }) {
                 </button>
               )}
               {s.kind === "needs-review" && (
-                <small className="muted">This calls Nano Banana once and Kling once.</small>
+                <small className="muted">About $0.55 of Gemini usage: one Nano Banana image and one Omni Flash clip.</small>
               )}
             </div>
           )}

@@ -103,13 +103,21 @@ Dialogue: 0,${assTime(0)},${assTime(durationSec)},Hook,,0,0,0,,${escaped}
 
 const NORMALIZE = `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,fps=${FPS},setsar=1,format=yuv420p`;
 
-async function normalizeSegment(dir: string, input: string, output: string, extraFilter?: string): Promise<void> {
-  const { durationSec, hasAudio } = await probe(path.join(dir, input));
-  const vf = extraFilter ? `${NORMALIZE},${extraFilter}` : NORMALIZE;
+async function normalizeSegment(
+  dir: string,
+  input: string,
+  output: string,
+  opts: { filter?: string; maxSec?: number; mute?: boolean } = {},
+): Promise<void> {
+  const probed = await probe(path.join(dir, input));
+  const durationSec = Math.min(probed.durationSec, opts.maxSec ?? Infinity);
+  const keepAudio = probed.hasAudio && !opts.mute;
+  const vf = opts.filter ? `${NORMALIZE},${opts.filter}` : NORMALIZE;
   const silence = ["-f", "lavfi", "-t", String(durationSec), "-i", "anullsrc=r=44100:cl=stereo"];
   await exec("ffmpeg", [
-    "-y", "-i", input, ...(hasAudio ? [] : silence),
-    "-map", "0:v:0", "-map", hasAudio ? "0:a:0" : "1:a:0",
+    "-y", "-i", input, ...(keepAudio ? [] : silence),
+    "-map", "0:v:0", "-map", keepAudio ? "0:a:0" : "1:a:0",
+    "-t", String(durationSec),
     "-vf", vf,
     "-af", "apad",
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
@@ -119,12 +127,11 @@ async function normalizeSegment(dir: string, input: string, output: string, extr
   ], dir);
 }
 
-export async function assemble(opts: { dir: string; hook: string; demo: string; hookText: string }): Promise<string> {
+export async function assemble(opts: { dir: string; hook: string; demo: string; hookText: string; hookDurationSec: number }): Promise<string> {
   const { dir } = opts;
-  const hookIn = path.join(dir, opts.hook);
-  const { durationSec } = await probe(hookIn);
-  await writeFile(path.join(dir, "hook.ass"), hookTextAss(opts.hookText, durationSec));
-  await normalizeSegment(dir, opts.hook, "seg-hook.mp4", "subtitles=hook.ass");
+  const hookSec = Math.min((await probe(path.join(dir, opts.hook))).durationSec, opts.hookDurationSec);
+  await writeFile(path.join(dir, "hook.ass"), hookTextAss(opts.hookText, hookSec));
+  await normalizeSegment(dir, opts.hook, "seg-hook.mp4", { filter: "subtitles=hook.ass", maxSec: hookSec, mute: true });
   await normalizeSegment(dir, opts.demo, "seg-demo.mp4");
   const file = "final.mp4";
   await exec("ffmpeg", [

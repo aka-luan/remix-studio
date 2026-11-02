@@ -95,7 +95,7 @@ export function isScriptStep(step: StepName): step is ScriptStep {
 export function staleFrom(remix: Remix, script: Script): { step: ScriptStep; fields: (keyof Script)[] } | null {
   for (const step of SCRIPT_STEPS) {
     const output = STEPS.find((s) => s.name === step)!.output;
-    const built = remix.built?.[step];
+    const built = remix.built?.[step] ?? (remix.plan && stepInputs(step, remix.plan.script));
     if (remix[output] === undefined || !built) continue;
     const fields = STEP_INPUTS[step].filter((key) => JSON.stringify(built[key]) !== JSON.stringify(script[key]));
     if (fields.length) return { step, fields };

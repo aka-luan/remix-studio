@@ -127,13 +127,13 @@ async function normalizeSegment(
   ], dir);
 }
 
-export async function assemble(opts: { dir: string; hook: string; demo: string; hookText: string; hookDurationSec: number }): Promise<string> {
+export async function assemble(opts: { dir: string; output: string; hook: string; demo: string; hookText: string; hookDurationSec: number }): Promise<string> {
   const { dir } = opts;
   const hookSec = Math.min((await probe(path.join(dir, opts.hook))).durationSec, opts.hookDurationSec);
   await writeFile(path.join(dir, "hook.ass"), hookTextAss(opts.hookText, hookSec));
   await normalizeSegment(dir, opts.hook, "seg-hook.mp4", { filter: "subtitles=hook.ass", maxSec: hookSec, mute: true });
   await normalizeSegment(dir, opts.demo, "seg-demo.mp4");
-  const file = "final.mp4";
+  const file = opts.output;
   await exec("ffmpeg", [
     "-y", "-i", "seg-hook.mp4", "-i", "seg-demo.mp4",
     "-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",

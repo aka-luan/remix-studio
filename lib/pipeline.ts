@@ -3,7 +3,7 @@ import { planWithClaude } from "./claude";
 import { config } from "./config";
 import { animateHook, generateAvatar, planWithGemini, transcribe } from "./gemini";
 import { assemble, downloadVideo, extractAudio, extractFrames, probe } from "./media";
-import { canAutoRun, nextStep, type Remix, type StepName, type TranscribedPlan } from "./remix";
+import { canAutoRun, isScriptStep, nextStep, stepInputs, type Remix, type StepName, type TranscribedPlan } from "./remix";
 import { artifactPath, remixDir, updateRemix, writeArtifact } from "./store";
 
 type Runner = (remix: Remix) => Promise<Partial<Remix>>;
@@ -64,12 +64,14 @@ const RUNNERS: Record<StepName, Runner> = {
   async assemble(remix) {
     const finalFile = await assemble({
       dir: remixDir(remix.id),
+      output: `final-${Date.now()}.mp4`,
       hook: remix.hookFile!,
       demo: remix.input.demoFile,
       hookText: remix.plan!.script.hookText,
       hookDurationSec: remix.plan!.script.hookDurationSec,
     });
-    return { finalFile };
+    if (remix.previousFinalFile) await rm(artifactPath(remix.id, remix.previousFinalFile), { force: true });
+    return { finalFile, previousFinalFile: undefined };
   },
 };
 
@@ -99,7 +101,13 @@ export async function runPipeline(id: string): Promise<void> {
       const current: StepName = step;
       try {
         const output = await RUNNERS[current](claimed);
-        await updateRemix(id, (latest) => ({ ...latest, ...output, run: { state: "idle" } }));
+        const built = isScriptStep(current) ? stepInputs(current, claimed.plan!.script) : null;
+        await updateRemix(id, (latest) => ({
+          ...latest,
+          ...output,
+          ...(built && { built: { ...latest.built, [current]: built } }),
+          run: { state: "idle" },
+        }));
       } catch (err) {
         console.error(`[remix ${id}] ${current} failed`, err);
         const error = err instanceof Error ? err.message : String(err);

@@ -1,7 +1,7 @@
 import { rm } from "node:fs/promises";
 import { NextResponse } from "next/server";
 import { isRunning, reconcile } from "@/lib/pipeline";
-import { ScriptSchema } from "@/lib/remix";
+import { backfillBuilt, ScriptSchema } from "@/lib/remix";
 import { loadRemix, remixDir, updateRemix } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -20,7 +20,7 @@ export async function PATCH(request: Request, { params }: Ctx) {
   const parsed = ScriptSchema.safeParse((await request.json()).script);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   if (isRunning(id)) return NextResponse.json({ error: "Wait for the current step to finish before editing." }, { status: 409 });
-  const updated = await updateRemix(id, (latest) => (latest.plan ? { ...latest, plan: { ...latest.plan, script: parsed.data } } : latest));
+  const updated = await updateRemix(id, (latest) => (latest.plan ? { ...backfillBuilt(latest), plan: { ...latest.plan, script: parsed.data } } : latest));
   return updated?.plan ? NextResponse.json(updated) : notFound();
 }
 

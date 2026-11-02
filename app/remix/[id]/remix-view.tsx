@@ -203,8 +203,11 @@ export function RemixView({ id }: { id: string }) {
             </>
           ) : remix.hookFile ? (
             <video src={fileUrl(remix, remix.hookFile)} controls playsInline className="phone" />
-          ) : remix.avatarFile ? (
-            <img src={fileUrl(remix, remix.avatarFile)} alt="Generated avatar" className="phone" />
+          ) : remix.avatarFile || remix.previousAvatarFile ? (
+            <>
+              <img src={fileUrl(remix, (remix.avatarFile ?? remix.previousAvatarFile)!)} alt="Generated avatar" className="phone" />
+              {!remix.avatarFile && <p className="muted">Previous avatar. A replacement has not been generated yet.</p>}
+            </>
           ) : (
             <p className="muted">Approve the script to generate the hook.</p>
           )}

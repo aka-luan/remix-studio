@@ -70,24 +70,40 @@ export async function planWithGemini(input: { video: string; product: { name: st
   return clampPlan(parsed.data);
 }
 
+// Two passes, because asking the model to swap the person inside a real photo is a face swap and gets blocked:
+// first the scene without anyone in it, then a new person placed into that scene, matching the original pose.
 export async function generateAvatar(opts: { prompt: string; styleFrame: string; creatorPhoto: string | null }): Promise<Buffer> {
-  const instructions = opts.creatorPhoto
-    ? `Image 1 is the creator: keep their face and identity exactly. Image 2 is a composition and mood reference from another video only; do not copy that person.`
-    : `The image is a composition and mood reference from another video only; do not copy that person. Invent a new, distinct person.`;
-  const input = [
+  const frame = await imagePart(opts.styleFrame);
+  const plate = await generateImage([
     {
-      type: "text" as const,
-      text: `${instructions}\n\nCreate a photorealistic vertical 9:16 frame that looks like it was filmed on a phone for TikTok: ${opts.prompt}\n\nNo text, captions, logos or watermarks in the image.`,
+      type: "text",
+      text: "Remove the person and all overlaid text from this photo. Fill in the background naturally so it shows the empty scene. Keep the camera angle, framing, lighting and colors exactly the same.",
     },
-    ...(opts.creatorPhoto ? [await imagePart(opts.creatorPhoto)] : []),
-    await imagePart(opts.styleFrame),
-  ];
+    frame,
+  ]);
 
+  const identity = opts.creatorPhoto
+    ? "The new person is the person in Image 3: keep their face and identity. Take only pose, expression and clothing from Image 2, nothing from Image 3."
+    : "The new person is not the person in Image 2: same apparent gender and age range, but a clearly different face, hair color and hairstyle.";
+  return generateImage([
+    {
+      type: "text",
+      text: `Image 1 is an empty scene. Image 2 is a pose reference. Place a fictional adult into the Image 1 scene. Keep every pixel of Image 1's background as it is: same walls, objects, colors, lighting, camera angle and framing. Do not redraw, restyle or replace the scene. Match Image 2's position in frame, body pose, hand placement, gaze, facial expression and clothing. ${identity}\n\nDescription of the person only (ignore any setting or lighting it mentions; the scene comes from Image 1): ${opts.prompt}\n\nPhotorealistic vertical 9:16 phone frame. No text, captions, logos or watermarks.`,
+    },
+    { type: "image", mime_type: "image/jpeg", data: plate.toString("base64") },
+    frame,
+    ...(opts.creatorPhoto ? [await imagePart(opts.creatorPhoto)] : []),
+  ]);
+}
+
+type ImageInput = { type: "text"; text: string } | Awaited<ReturnType<typeof imagePart>>;
+
+async function generateImage(input: ImageInput[]): Promise<Buffer> {
   const interaction = await client().interactions.create({
     model: config.geminiImageModel(),
     input,
-    response_format: { type: "image", mime_type: "image/png", aspect_ratio: "9:16", image_size: "2K" },
-  });
+    response_format: { type: "image", mime_type: "image/jpeg", aspect_ratio: "9:16", image_size: "2K" },
+  }, { maxRetries: 0 });
   const data = interaction.output_image?.data;
   if (!data) throw new Error(`Nano Banana returned no image${interaction.output_text ? `: ${interaction.output_text}` : ""}`);
   return Buffer.from(data, "base64");

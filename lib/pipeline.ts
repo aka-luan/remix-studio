@@ -43,12 +43,12 @@ const RUNNERS: Record<StepName, Runner> = {
 
   async avatar(remix) {
     const styleFrame = styleFrameFor(remix);
-    const png = await generateAvatar({
+    const jpeg = await generateAvatar({
       prompt: remix.plan!.script.avatarPrompt,
       styleFrame: artifactPath(remix.id, styleFrame),
       creatorPhoto: remix.input.avatarRefFile ? artifactPath(remix.id, remix.input.avatarRefFile) : null,
     });
-    return { avatarFile: await writeArtifact(remix.id, "avatar.png", png) };
+    return { avatarFile: await writeArtifact(remix.id, `avatar-${Date.now()}.jpg`, jpeg), previousAvatarFile: undefined };
   },
 
   async hook(remix) {

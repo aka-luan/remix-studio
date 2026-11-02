@@ -51,6 +51,7 @@ export type Remix = {
   plan?: TranscribedPlan;
   approvedAt?: string;
   avatarFile?: string;
+  previousAvatarFile?: string;
   hookFile?: string;
   finalFile?: string;
   run: RunState;
@@ -103,6 +104,7 @@ export function canAutoRun(remix: Remix): boolean {
 export function resetFrom(remix: Remix, from: StepName): Remix {
   const index = STEPS.findIndex((s) => s.name === from);
   const next: Remix = { ...remix, run: { state: "idle" } };
+  if (from === "avatar" && remix.avatarFile) next.previousAvatarFile = remix.avatarFile;
   for (const step of STEPS.slice(index)) delete next[step.output];
   if (index <= STEPS.findIndex((s) => s.name === "plan")) delete next.approvedAt;
   return next;

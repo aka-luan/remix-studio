@@ -4,3 +4,4 @@ data
 .env.local
 next-env.d.ts
 *.tsbuildinfo
+.local/

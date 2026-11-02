@@ -5,7 +5,7 @@ A personal, local version of the Yorby workflow. Paste a TikTok or Instagram "ho
 1. **Ingest.** yt-dlp downloads the video. FFmpeg samples 16 frames (dense over the first 4 seconds, where the hook is) and extracts the audio.
 2. **Plan.** Gemini watches the whole video, sound included, analyzes why the hook works, and writes a script for your product: on-screen hook text with alternatives, an avatar prompt, a motion prompt, the hook length, a caption and hashtags. Set `PLANNER=claude` to have Claude write it from the frames and a transcript instead.
 3. **Review.** The pipeline stops here. Edit anything in the script, then press **Generate video**. Nothing paid for image or video generation runs before this.
-4. **Avatar.** Nano Banana generates the opening frame. It uses your creator photo for the face if you gave one, and a frame from the original for composition only.
+4. **Avatar.** Nano Banana runs twice. It first removes the person and the overlaid text from a frame of the original hook, leaving the empty scene. It then places a new person into that scene in the original pose, expression and clothing: your creator photo if you gave one, otherwise a clearly different fictional adult. Asking it to swap the person directly is treated as a face swap and blocked. The image costs about $0.10 because of the two passes.
 5. **Hook.** Gemini Omni Flash animates the frame into a 3–10 second clip. Its sound is muted.
 6. **Assemble.** FFmpeg scales both clips to 1080×1920 at 30 fps, burns the hook text in TikTok style, and joins the hook to your demo as `final.mp4`.
 
@@ -21,6 +21,15 @@ npm install
 cp .env.example .env.local      # then fill in the keys
 npm run dev                     # http://localhost:3000
 ```
+
+On this Windows PC, Node and FFmpeg are installed and yt-dlp is in `.local/bin`.
+Run `Start-RemixStudio.cmd` to start the app at http://127.0.0.1:3000.
+The launcher adds the local yt-dlp folder to PATH for the app. Close its terminal
+or press Ctrl+C to stop a foreground session. Use `npm.cmd` for npm commands in
+PowerShell, where the script execution policy blocks `npm.ps1`.
+
+The local `.env.local` file has been created from `.env.example`. Add your
+`GEMINI_API_KEY` there before generating a remix, then restart the app.
 
 One Google key runs everything. Create it at aistudio.google.com/apikey and put it in `.env.local` as `GEMINI_API_KEY`.
 

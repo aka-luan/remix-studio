@@ -575,9 +575,11 @@ button.link {
   gap: 8px;
 }
 
-.redo-buttons button {
+.redo-buttons button,
+.redo-buttons .button {
   padding: 8px 6px;
   font-size: 13px;
+  text-align: center;
 }
 
 .thumbs {

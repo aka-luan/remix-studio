@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, fileUrl, statusLabel } from "@/lib/client";
 import { status, STEPS, type Remix, type Script, type StepName } from "@/lib/remix";
 
@@ -14,6 +14,8 @@ export function RemixView({ id }: { id: string }) {
   const [missing, setMissing] = useState(false);
   const [draft, setDraft] = useState<Script | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [uploadingDemo, setUploadingDemo] = useState(false);
+  const demoInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -72,6 +74,21 @@ export function RemixView({ id }: { id: string }) {
       setRemix(await api<Remix>(`/api/remixes/${id}/run`, { method: "POST", body: JSON.stringify(action) }));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function replaceDemo(file: File) {
+    setError(null);
+    if (!(await saveScript())) return;
+    const body = new FormData();
+    body.set("demoFile", file);
+    setUploadingDemo(true);
+    try {
+      setRemix(await api<Remix>(`/api/remixes/${id}/demo`, { method: "POST", body }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploadingDemo(false);
     }
   }
 
@@ -238,6 +255,30 @@ export function RemixView({ id }: { id: string }) {
               </div>
             </div>
           )}
+          <div className="redo">
+            <p className="redo-title">
+              {remix.finalFile ? "New demo recording? Swap it in and the video is re-stitched." : "Wrong demo recording? Swap it in before stitching."}
+            </p>
+            <div className="redo-buttons">
+              <a className="button" href={fileUrl(remix, remix.input.demoFile)} target="_blank" rel="noreferrer">
+                Current demo
+              </a>
+              <button disabled={busy || uploadingDemo} onClick={() => demoInput.current?.click()}>
+                {uploadingDemo ? "Uploading…" : "Replace demo"}
+              </button>
+              <input
+                ref={demoInput}
+                type="file"
+                accept="video/*"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) replaceDemo(file);
+                }}
+              />
+            </div>
+          </div>
           {remix.avatarFile && remix.hookFile && (
             <div className="thumbs">
               <a href={fileUrl(remix, remix.avatarFile)} target="_blank" rel="noreferrer">

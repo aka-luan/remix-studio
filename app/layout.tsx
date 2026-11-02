@@ -12,10 +12,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <header className="topbar">
-          <Link href="/" className="brand">
-            Remix Studio
-          </Link>
-          <span className="tagline">Copy what's working. Swap in your product.</span>
+          <div className="topbar-inner">
+            <Link href="/" className="brand">
+              Remix Studio
+            </Link>
+            <span className="tagline">Copy what's working. Swap in your product.</span>
+          </div>
         </header>
         <main>{children}</main>
       </body>

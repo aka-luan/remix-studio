@@ -81,21 +81,31 @@ export function RemixView({ id }: { id: string }) {
     router.push("/");
   }
 
+  const hasOutput = Boolean(remix.finalFile || remix.hookFile || remix.avatarFile || remix.previousAvatarFile);
+  const stepIndex = s.kind === "running" || s.kind === "failed" || s.kind === "ready" ? STEPS.findIndex((x) => x.name === s.step) : -1;
+
   return (
-    <div className="remix">
+    <div className={`remix${hasOutput ? " remix-has-output" : ""}`}>
+      <Link href="/" className="back">
+        ← Library
+      </Link>
       <div className="remix-head">
-        <div>
-          <Link href="/" className="muted">
-            ← Library
-          </Link>
+        <div className="remix-title">
           <h1>{remix.input.product.name}</h1>
           <span className={`pill pill-${s.kind}`}>{statusLabel(s)}</span>
         </div>
-        <button className="link danger" onClick={remove} disabled={busy}>
+        <button className="quiet danger" onClick={remove} disabled={busy}>
           Delete
         </button>
       </div>
 
+      <p className="steps-caption">
+        {stepIndex >= 0
+          ? `Step ${stepIndex + 1} of ${STEPS.length} · ${STEPS[stepIndex].label}`
+          : s.kind === "needs-review"
+            ? `Step 3 of ${STEPS.length} · Review the script, then generate`
+            : `All ${STEPS.length} steps done`}
+      </p>
       <ol className="steps">
         {STEPS.map((step) => {
           const done = remix[step.output] !== undefined;
@@ -109,7 +119,7 @@ export function RemixView({ id }: { id: string }) {
                   : "pending";
           return (
             <li key={step.name} className={`step step-${state}`}>
-              {step.label}
+              <span>{step.label}</span>
             </li>
           );
         })}
@@ -126,7 +136,7 @@ export function RemixView({ id }: { id: string }) {
       {error && <p className="error">{error}</p>}
 
       <div className="remix-grid">
-        <section className="panel">
+        <section className="panel panel-original">
           <h2>Original</h2>
           {remix.source ? (
             <video src={fileUrl(remix, remix.source.videoFile)} controls playsInline className="phone" />
@@ -155,32 +165,37 @@ export function RemixView({ id }: { id: string }) {
           )}
         </section>
 
-        <section className="panel">
+        <section className="panel panel-script">
           <h2>Your script</h2>
           {draft ? (
             <ScriptEditor script={draft} onChange={setDraft} />
           ) : (
-            <p className="muted">Claude writes the script after watching the original.</p>
+            <p className="muted">The script is written after the original has been watched and analyzed.</p>
           )}
           {draft && (
             <div className="actions">
               {s.kind === "needs-review" ? (
-                <button className="primary" onClick={() => act({ action: "approve" })}>
-                  Generate video
-                </button>
+                <>
+                  <button className="primary" onClick={() => act({ action: "approve" })}>
+                    Generate video
+                  </button>
+                  <small className="muted">About $0.55 of Gemini usage: one Nano Banana image and one Omni Flash clip.</small>
+                </>
+              ) : dirty ? (
+                <>
+                  <button className="primary" onClick={saveScript} disabled={busy}>
+                    Save script
+                  </button>
+                  {remix.finalFile && <small className="muted">Then use Re-stitch to burn in new hook text.</small>}
+                </>
               ) : (
-                <button onClick={saveScript} disabled={!dirty || busy}>
-                  {dirty ? "Save script" : "Saved"}
-                </button>
-              )}
-              {s.kind === "needs-review" && (
-                <small className="muted">About $0.55 of Gemini usage: one Nano Banana image and one Omni Flash clip.</small>
+                <small className="muted">All changes saved.</small>
               )}
             </div>
           )}
         </section>
 
-        <section className="panel">
+        <section className="panel panel-result">
           <h2>Remix</h2>
           {remix.finalFile ? (
             <>
@@ -189,16 +204,7 @@ export function RemixView({ id }: { id: string }) {
                 <a className="button primary" href={fileUrl(remix, remix.finalFile, true)}>
                   Download MP4
                 </a>
-                {remix.plan && (
-                  <button
-                    onClick={() => {
-                      const { caption, hashtags } = remix.plan!.script;
-                      navigator.clipboard.writeText(`${caption}\n\n${hashtags.filter(Boolean).map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ")}`);
-                    }}
-                  >
-                    Copy caption
-                  </button>
-                )}
+                {remix.plan && <CopyCaption script={remix.plan.script} />}
               </div>
             </>
           ) : remix.hookFile ? (
@@ -214,29 +220,33 @@ export function RemixView({ id }: { id: string }) {
 
           {remix.avatarFile && (
             <div className="redo">
-              <span className="muted">Not quite right?</span>
-              <button disabled={busy} onClick={() => act({ action: "redo", from: "avatar" })}>
-                New avatar
-              </button>
-              {remix.hookFile && (
-                <button disabled={busy} onClick={() => act({ action: "redo", from: "hook" })}>
-                  Re-animate hook
+              <p className="redo-title">Not quite right? Redo one step. The steps after it run again.</p>
+              <div className="redo-buttons">
+                <button disabled={busy} onClick={() => act({ action: "redo", from: "avatar" })}>
+                  New avatar
                 </button>
-              )}
-              {remix.finalFile && (
-                <button disabled={busy} onClick={() => act({ action: "redo", from: "assemble" })}>
-                  Re-stitch with new text
-                </button>
-              )}
+                {remix.hookFile && (
+                  <button disabled={busy} onClick={() => act({ action: "redo", from: "hook" })}>
+                    Re-animate
+                  </button>
+                )}
+                {remix.finalFile && (
+                  <button disabled={busy} onClick={() => act({ action: "redo", from: "assemble" })}>
+                    Re-stitch
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {remix.avatarFile && remix.hookFile && (
             <div className="thumbs">
-              <a href={fileUrl(remix, remix.avatarFile)} target="_blank">
-                <img src={fileUrl(remix, remix.avatarFile)} alt="Avatar frame" />
+              <a href={fileUrl(remix, remix.avatarFile)} target="_blank" rel="noreferrer">
+                <img src={fileUrl(remix, remix.avatarFile)} alt="" />
+                <span>Avatar frame</span>
               </a>
-              <a href={fileUrl(remix, remix.hookFile)} target="_blank">
-                <video src={fileUrl(remix, remix.hookFile)} muted playsInline />
+              <a href={fileUrl(remix, remix.hookFile)} target="_blank" rel="noreferrer">
+                <video src={`${fileUrl(remix, remix.hookFile)}#t=0.1`} preload="metadata" muted playsInline />
+                <span>Hook clip</span>
               </a>
             </div>
           )}
@@ -285,11 +295,32 @@ function ScriptEditor({ script, onChange }: { script: Script; onChange: (s: Scri
       </label>
       <label>
         Hashtags
-        <input
+        <textarea
+          rows={2}
           value={script.hashtags.join(" ")}
-          onChange={(e) => set("hashtags", e.target.value.split(" "))}
+          onChange={(e) => set("hashtags", e.target.value.split(/[ \n]/))}
         />
       </label>
     </div>
+  );
+}
+
+function CopyCaption({ script }: { script: Script }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1600);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  return (
+    <button
+      onClick={async () => {
+        const tags = script.hashtags.filter(Boolean).map((h) => (h.startsWith("#") ? h : `#${h}`));
+        await navigator.clipboard.writeText(`${script.caption}\n\n${tags.join(" ")}`);
+        setCopied(true);
+      }}
+    >
+      {copied ? "Copied ✓" : "Copy caption"}
+    </button>
   );
 }

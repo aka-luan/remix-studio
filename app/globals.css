@@ -52,12 +52,17 @@ a {
 }
 
 .topbar {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.topbar-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 16px 24px;
   display: flex;
   align-items: baseline;
   gap: 16px;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
 }
 
 .brand {
@@ -96,9 +101,14 @@ fieldset {
   border: 0;
   padding: 0;
   margin: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+legend {
+  padding: 0;
 }
 
 legend,
@@ -141,10 +151,85 @@ textarea {
   line-height: 1.45;
 }
 
+textarea {
+  field-sizing: content;
+  min-height: 3lh;
+  max-height: 320px;
+}
+
+textarea[name="productDescription"] {
+  min-height: 6lh;
+}
+
 input:focus,
 textarea:focus {
   outline: 2px solid var(--ink);
   outline-offset: -1px;
+}
+
+button:focus-visible,
+.button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.drop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 64px;
+  padding: 12px 16px;
+  border: 1px dashed #cdc7ba;
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 14px;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.drop input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  padding: 0;
+}
+
+.drop:hover,
+.drop-over {
+  border-color: var(--muted);
+}
+
+.drop-over {
+  background: var(--surface);
+}
+
+.drop:focus-within {
+  outline: 2px solid var(--ink);
+  outline-offset: -1px;
+}
+
+.drop-filled {
+  border-style: solid;
+  background: var(--surface);
+}
+
+.drop-file {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.drop-file strong {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drop-file .muted {
+  font-size: 13px;
 }
 
 small {
@@ -166,9 +251,31 @@ button,
   display: inline-block;
 }
 
+button:not(:disabled):hover,
+.button:hover {
+  border-color: var(--muted);
+}
+
+.primary:not(:disabled):hover,
+.button.primary:hover {
+  background: #d43c21;
+  border-color: #d43c21;
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+button.quiet {
+  border-color: transparent;
+  background: none;
+  font-weight: 500;
+}
+
+button.quiet:not(:disabled):hover {
+  border-color: var(--line);
+  background: var(--surface);
 }
 
 button:not(:disabled):active,
@@ -295,15 +402,42 @@ button.link {
   border-color: currentColor;
 }
 
+.back {
+  display: inline-block;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--ink);
+}
+
 .remix-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 16px;
+  align-items: center;
+  gap: 16px;
+  margin: 8px 0 16px;
 }
 
-.remix-head h1 {
-  margin-top: 8px;
+.remix-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.remix-title h1 {
+  margin: 0;
+  line-height: 1.15;
+}
+
+.steps-caption {
+  display: none;
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .steps {
@@ -331,11 +465,12 @@ button.link {
 }
 
 .step-done {
-  color: var(--ok);
+  color: var(--ink);
 }
 
 .step-done::before {
   content: "✓ ";
+  color: var(--ok);
 }
 
 .step-running {
@@ -418,13 +553,31 @@ button.link {
   margin-top: 16px;
 }
 
+.actions small {
+  flex: 1 1 200px;
+}
+
 .redo {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.redo-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.redo-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin-top: 16px;
-  font-size: 14px;
+}
+
+.redo-buttons button {
+  padding: 8px 6px;
+  font-size: 13px;
 }
 
 .thumbs {
@@ -432,6 +585,19 @@ button.link {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-top: 16px;
+}
+
+.thumbs a {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-decoration: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.thumbs a:hover {
+  color: var(--ink);
 }
 
 .thumbs img,
@@ -447,9 +613,50 @@ button.link {
 @media (max-width: 1000px) {
   .home,
   .remix-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .remix-has-output .panel-result {
+    order: -1;
+  }
+  .steps-caption {
+    display: block;
   }
   .steps {
-    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .step {
+    height: 6px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: var(--line);
+  }
+  .step span,
+  .step::before {
+    display: none;
+  }
+  .step-done {
+    background: var(--ok);
+  }
+  .step-running {
+    background: var(--ink);
+  }
+  .step-failed {
+    background: var(--accent);
+  }
+}
+
+@media (max-width: 640px) {
+  main {
+    padding: 16px 16px 48px;
+  }
+  .topbar-inner {
+    padding: 14px 16px;
+  }
+  .tagline {
+    display: none;
+  }
+  .panel {
+    padding: 16px;
   }
 }

@@ -37,7 +37,7 @@ export function NewRemixForm() {
       <fieldset>
         <legend>Source video</legend>
         {useUpload ? (
-          <input type="file" name="sourceFile" accept="video/*" required />
+          <FileDrop name="sourceFile" accept="video/*" required prompt="Drop the video file, or click to choose" />
         ) : (
           <input type="url" name="sourceUrl" placeholder="https://www.tiktok.com/@someone/video/…" required />
         )}
@@ -67,16 +67,25 @@ export function NewRemixForm() {
 
       <fieldset>
         <legend>Demo screen recording</legend>
-        <input type="file" name="demoFile" accept="video/*" required />
-        <small className="muted">Plays right after the hook. A vertical phone recording looks best.</small>
+        <FileDrop
+          name="demoFile"
+          accept="video/*"
+          required
+          prompt="Drop your screen recording, or click to choose"
+          hint="Plays right after the hook. A vertical phone recording looks best."
+        />
       </fieldset>
 
       <fieldset>
         <legend>
           Creator photo <span className="muted">(optional)</span>
         </legend>
-        <input type="file" name="avatarFile" accept="image/png,image/jpeg,image/webp" />
-        <small className="muted">Used as the face of the hook. Leave empty to have a new person generated.</small>
+        <FileDrop
+          name="avatarFile"
+          accept="image/png,image/jpeg,image/webp"
+          prompt="Drop a photo, or click to choose"
+          hint="Used as the face of the hook. Leave empty to have a new person generated."
+        />
       </fieldset>
 
       {error && <p className="error">{error}</p>}
@@ -85,4 +94,50 @@ export function NewRemixForm() {
       </button>
     </form>
   );
+}
+
+function FileDrop({
+  name,
+  accept,
+  required,
+  prompt,
+  hint,
+}: {
+  name: string;
+  accept: string;
+  required?: boolean;
+  prompt: string;
+  hint?: string;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [over, setOver] = useState(false);
+  return (
+    <>
+      <div className={`drop${file ? " drop-filled" : ""}${over ? " drop-over" : ""}`}>
+        <input
+          type="file"
+          name={name}
+          accept={accept}
+          required={required}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          onDragEnter={() => setOver(true)}
+          onDragLeave={() => setOver(false)}
+          onDrop={() => setOver(false)}
+        />
+        {file ? (
+          <span className="drop-file">
+            <strong>{file.name}</strong>
+            <span className="muted">{formatSize(file.size)} · click to replace</span>
+          </span>
+        ) : (
+          <span className="muted">{prompt}</span>
+        )}
+      </div>
+      {hint && <small className="muted">{hint}</small>}
+    </>
+  );
+}
+
+function formatSize(bytes: number): string {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

@@ -4,15 +4,43 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, fileUrl, statusLabel } from "@/lib/client";
-import { status, STEPS, type Remix, type Script, type StepName } from "@/lib/remix";
+import { staleFrom, status, STEPS, type Remix, type Script, type ScriptStep, type StepName } from "@/lib/remix";
 
 type Action = { action: "approve" } | { action: "retry" } | { action: "redo"; from: StepName };
+
+const REDO: Record<ScriptStep, { label: string; reruns: string; cost: string }> = {
+  avatar: { label: "New avatar", reruns: "avatar, hook clip, and stitch", cost: "about $0.55 of Gemini usage" },
+  hook: { label: "Re-animate", reruns: "hook clip and stitch", cost: "one Omni Flash clip" },
+  assemble: { label: "Re-stitch", reruns: "stitch only", cost: "free, runs locally" },
+};
+
+const FIELD_LABELS: Partial<Record<keyof Script, string>> = {
+  avatarPrompt: "avatar prompt",
+  motionPrompt: "motion",
+  hookDurationSec: "hook length",
+  hookText: "hook text",
+};
+
+const sameScript = (a: Script | undefined, b: Script | undefined) => JSON.stringify(a) === JSON.stringify(b);
+
+const draftKey = (id: string) => `remix-studio:draft:${id}`;
+
+function readDraft(id: string): { base: Script; draft: Script } | null {
+  try {
+    return JSON.parse(localStorage.getItem(draftKey(id)) ?? "null");
+  } catch {
+    return null;
+  }
+}
 
 export function RemixView({ id }: { id: string }) {
   const router = useRouter();
   const [remix, setRemix] = useState<Remix | null>(null);
   const [missing, setMissing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Script | null>(null);
+  const [restored, setRestored] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadingDemo, setUploadingDemo] = useState(false);
   const demoInput = useRef<HTMLInputElement>(null);
@@ -21,9 +49,11 @@ export function RemixView({ id }: { id: string }) {
     try {
       const next = await api<Remix>(`/api/remixes/${id}`);
       setRemix(next);
+      setLoadError(null);
       return next;
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) setMissing(true);
+      else setLoadError(err instanceof Error ? err.message : String(err));
       return undefined;
     }
   }, [id]);
@@ -45,25 +75,59 @@ export function RemixView({ id }: { id: string }) {
     };
   }, [load, kind]);
 
+  const saved = remix?.plan?.script;
   useEffect(() => {
-    if (remix?.plan && draft === null) setDraft(remix.plan.script);
-  }, [remix?.plan, draft]);
+    if (!saved || draft !== null) return;
+    const stored = readDraft(id);
+    const restore = stored !== null && sameScript(stored.base, saved) && !sameScript(stored.draft, saved);
+    setDraft(restore ? stored.draft : saved);
+    setRestored(restore);
+  }, [id, saved, draft]);
+
+  const dirty = draft !== null && saved !== undefined && !sameScript(draft, saved);
+  useEffect(() => {
+    if (draft === null || !saved) return;
+    if (dirty) localStorage.setItem(draftKey(id), JSON.stringify({ base: saved, draft }));
+    else localStorage.removeItem(draftKey(id));
+  }, [id, draft, saved, dirty]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   if (missing) return <p>Remix not found. <Link href="/">Back to library</Link></p>;
-  if (!remix) return <p className="muted">Loading…</p>;
+  if (!remix) {
+    return loadError ? (
+      <div className="error-box" role="alert">
+        <p>Couldn&apos;t load this remix: {loadError}</p>
+        <button className="primary" onClick={load}>
+          Retry
+        </button>
+      </div>
+    ) : (
+      <p className="muted">Loading…</p>
+    );
+  }
 
   const s = status(remix);
   const busy = s.kind === "running" || s.kind === "ready";
-  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(remix.plan?.script);
+  const stale = draft ? staleFrom(remix, draft) : null;
 
   async function saveScript(): Promise<boolean> {
     if (!draft || !dirty) return true;
+    setSaving(true);
     try {
       setRemix(await api<Remix>(`/api/remixes/${id}`, { method: "PATCH", body: JSON.stringify({ script: draft }) }));
+      setRestored(false);
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return false;
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -98,12 +162,28 @@ export function RemixView({ id }: { id: string }) {
     router.push("/");
   }
 
-  const hasOutput = Boolean(remix.finalFile || remix.hookFile || remix.avatarFile || remix.previousAvatarFile);
+  const hasOutput = Boolean(remix.finalFile || remix.previousFinalFile || remix.hookFile || remix.avatarFile || remix.previousAvatarFile);
   const stepIndex = s.kind === "running" || s.kind === "failed" || s.kind === "ready" ? STEPS.findIndex((x) => x.name === s.step) : -1;
+  const saveStatus = saving
+    ? "Saving…"
+    : dirty
+      ? restored
+        ? "Restored unsaved edits from your last visit. Not saved yet."
+        : "Unsaved changes. Kept on this device until you save."
+      : "All changes saved.";
+  const redoOptions = (Object.keys(REDO) as ScriptStep[]).filter(
+    (step) => remix[STEPS.find((x) => x.name === step)!.output] !== undefined,
+  );
 
   return (
-    <div className={`remix${hasOutput ? " remix-has-output" : ""}`}>
-      <Link href="/" className="back">
+    <div className={`remix${hasOutput ? " remix-has-output" : ""}${s.kind === "needs-review" ? " remix-needs-review" : ""}`}>
+      <Link
+        href="/"
+        className="back"
+        onClick={(e) => {
+          if (dirty && !confirm("You have unsaved script edits. They stay on this device but are not saved. Leave anyway?")) e.preventDefault();
+        }}
+      >
         ← Library
       </Link>
       <div className="remix-head">
@@ -142,15 +222,25 @@ export function RemixView({ id }: { id: string }) {
         })}
       </ol>
 
+      {loadError && (
+        <div className="notice" role="status">
+          <p>Couldn&apos;t reach the server. Showing the last loaded version.</p>
+          <button onClick={load}>Retry</button>
+        </div>
+      )}
       {s.kind === "failed" && (
-        <div className="error-box">
+        <div className="error-box" role="alert">
           <p>{s.error}</p>
           <button className="primary" onClick={() => act({ action: "retry" })}>
             Retry
           </button>
         </div>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
       <div className="remix-grid">
         <section className="panel panel-original">
@@ -161,24 +251,27 @@ export function RemixView({ id }: { id: string }) {
             <p className="muted">Downloading…</p>
           )}
           {remix.plan && (
-            <dl className="analysis">
-              <dt>Format</dt>
-              <dd>{remix.plan.analysis.format.replace(/_/g, " ")}</dd>
-              <dt>Hook (0–{remix.plan.analysis.hookEndsAtSec}s)</dt>
-              <dd>{remix.plan.analysis.hookVisual}</dd>
-              <dt>On-screen text</dt>
-              <dd>“{remix.plan.analysis.originalOnScreenText}”</dd>
-              <dt>Demo</dt>
-              <dd>{remix.plan.analysis.demoSection}</dd>
-              <dt>Why it works</dt>
-              <dd>{remix.plan.analysis.whyItWorks}</dd>
-              {remix.plan.transcript && remix.plan.transcript !== "(no speech)" && (
-                <>
-                  <dt>Transcript</dt>
-                  <dd>{remix.plan.transcript}</dd>
-                </>
-              )}
-            </dl>
+            <details className="analysis-wrap" open={s.kind !== "needs-review"}>
+              <summary>Analysis</summary>
+              <dl className="analysis">
+                <dt>Format</dt>
+                <dd>{remix.plan.analysis.format.replace(/_/g, " ")}</dd>
+                <dt>Hook (0–{remix.plan.analysis.hookEndsAtSec}s)</dt>
+                <dd>{remix.plan.analysis.hookVisual}</dd>
+                <dt>On-screen text</dt>
+                <dd>“{remix.plan.analysis.originalOnScreenText}”</dd>
+                <dt>Demo</dt>
+                <dd>{remix.plan.analysis.demoSection}</dd>
+                <dt>Why it works</dt>
+                <dd>{remix.plan.analysis.whyItWorks}</dd>
+                {remix.plan.transcript && remix.plan.transcript !== "(no speech)" && (
+                  <>
+                    <dt>Transcript</dt>
+                    <dd>{remix.plan.transcript}</dd>
+                  </>
+                )}
+              </dl>
+            </details>
           )}
         </section>
 
@@ -190,25 +283,40 @@ export function RemixView({ id }: { id: string }) {
             <p className="muted">The script is written after the original has been watched and analyzed.</p>
           )}
           {draft && (
-            <div className="actions">
-              {s.kind === "needs-review" ? (
-                <>
-                  <button className="primary" onClick={() => act({ action: "approve" })}>
+            <>
+              {stale && (
+                <div className="notice" role="status">
+                  <p>
+                    <strong>Video needs updating.</strong> The current video doesn&apos;t use your new{" "}
+                    {stale.fields.map((f) => FIELD_LABELS[f]).join(" or ")}. {REDO[stale.step].label} reruns the{" "}
+                    {REDO[stale.step].reruns}, {REDO[stale.step].cost}.
+                  </p>
+                  <button className="primary" disabled={busy || saving} onClick={() => act({ action: "redo", from: stale.step })}>
+                    {dirty ? `Save & ${REDO[stale.step].label.toLowerCase()}` : REDO[stale.step].label}
+                  </button>
+                </div>
+              )}
+              <div className="actions actions-script">
+                {s.kind === "needs-review" && (
+                  <button className="primary" disabled={saving} onClick={() => act({ action: "approve" })}>
                     Generate video
                   </button>
-                  <small className="muted">About $0.55 of Gemini usage: one Nano Banana image and one Omni Flash clip.</small>
-                </>
-              ) : dirty ? (
-                <>
-                  <button className="primary" onClick={saveScript} disabled={busy}>
-                    Save script
-                  </button>
-                  {remix.finalFile && <small className="muted">Then use Re-stitch to burn in new hook text.</small>}
-                </>
-              ) : (
-                <small className="muted">All changes saved.</small>
+                )}
+                <button
+                  className={s.kind !== "needs-review" && dirty && !stale ? "primary" : undefined}
+                  onClick={saveScript}
+                  disabled={!dirty || busy || saving}
+                >
+                  Save script
+                </button>
+                <small className="muted" role="status">
+                  {saveStatus}
+                </small>
+              </div>
+              {s.kind === "needs-review" && (
+                <small className="muted">Generating costs about $0.55 of Gemini usage: one Nano Banana image and one Omni Flash clip.</small>
               )}
-            </div>
+            </>
           )}
         </section>
 
@@ -224,6 +332,18 @@ export function RemixView({ id }: { id: string }) {
                 {remix.plan && <CopyCaption script={remix.plan.script} />}
               </div>
             </>
+          ) : remix.previousFinalFile ? (
+            <>
+              <video src={fileUrl(remix, remix.previousFinalFile)} controls playsInline className="phone" />
+              <p className="muted">
+                {busy ? "Previous version. The new one is being generated." : "Previous version. The new one hasn't finished."}
+              </p>
+              <div className="actions">
+                <a className="button" href={fileUrl(remix, remix.previousFinalFile, true)}>
+                  Download previous MP4
+                </a>
+              </div>
+            </>
           ) : remix.hookFile ? (
             <video src={fileUrl(remix, remix.hookFile)} controls playsInline className="phone" />
           ) : remix.avatarFile || remix.previousAvatarFile ? (
@@ -235,24 +355,26 @@ export function RemixView({ id }: { id: string }) {
             <p className="muted">Approve the script to generate the hook.</p>
           )}
 
-          {remix.avatarFile && (
+          {redoOptions.length > 0 && (
             <div className="redo">
-              <p className="redo-title">Not quite right? Redo one step. The steps after it run again.</p>
+              <p className="redo-title">
+                Not quite right? Redo one step. The steps after it run again, and the current video stays downloadable until
+                the new one is done.
+              </p>
               <div className="redo-buttons">
-                <button disabled={busy} onClick={() => act({ action: "redo", from: "avatar" })}>
-                  New avatar
-                </button>
-                {remix.hookFile && (
-                  <button disabled={busy} onClick={() => act({ action: "redo", from: "hook" })}>
-                    Re-animate
+                {redoOptions.map((step) => (
+                  <button key={step} disabled={busy} onClick={() => act({ action: "redo", from: step })}>
+                    {REDO[step].label}
                   </button>
-                )}
-                {remix.finalFile && (
-                  <button disabled={busy} onClick={() => act({ action: "redo", from: "assemble" })}>
-                    Re-stitch
-                  </button>
-                )}
+                ))}
               </div>
+              <ul className="redo-costs">
+                {redoOptions.map((step) => (
+                  <li key={step}>
+                    <strong>{REDO[step].label}</strong> reruns the {REDO[step].reruns}, {REDO[step].cost}.
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           <div className="redo">
@@ -271,6 +393,7 @@ export function RemixView({ id }: { id: string }) {
                 type="file"
                 accept="video/*"
                 hidden
+                aria-label="Replace demo recording"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   e.target.value = "";

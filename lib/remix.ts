@@ -54,6 +54,8 @@ export type Remix = {
   previousAvatarFile?: string;
   hookFile?: string;
   finalFile?: string;
+  previousFinalFile?: string;
+  built?: Partial<Record<StepName, Partial<Script>>>;
   run: RunState;
 };
 
@@ -71,6 +73,45 @@ export const STEPS = [
 ] as const satisfies readonly { name: string; label: string; output: keyof Remix }[];
 
 export type StepName = (typeof STEPS)[number]["name"];
+
+export const STEP_INPUTS = {
+  avatar: ["avatarPrompt"],
+  hook: ["motionPrompt", "hookDurationSec"],
+  assemble: ["hookText", "hookDurationSec"],
+} as const satisfies Partial<Record<StepName, readonly (keyof Script)[]>>;
+
+export type ScriptStep = keyof typeof STEP_INPUTS;
+
+const SCRIPT_STEPS = Object.keys(STEP_INPUTS) as ScriptStep[];
+
+export function stepInputs(step: ScriptStep, script: Script): Partial<Script> {
+  return Object.fromEntries(STEP_INPUTS[step].map((key) => [key, script[key]]));
+}
+
+export function isScriptStep(step: StepName): step is ScriptStep {
+  return step in STEP_INPUTS;
+}
+
+export function staleFrom(remix: Remix, script: Script): { step: ScriptStep; fields: (keyof Script)[] } | null {
+  for (const step of SCRIPT_STEPS) {
+    const output = STEPS.find((s) => s.name === step)!.output;
+    const built = remix.built?.[step];
+    if (remix[output] === undefined || !built) continue;
+    const fields = STEP_INPUTS[step].filter((key) => JSON.stringify(built[key]) !== JSON.stringify(script[key]));
+    if (fields.length) return { step, fields };
+  }
+  return null;
+}
+
+export function backfillBuilt(remix: Remix): Remix {
+  if (!remix.plan) return remix;
+  const built = { ...remix.built };
+  for (const step of SCRIPT_STEPS) {
+    const output = STEPS.find((s) => s.name === step)!.output;
+    if (remix[output] !== undefined && !built[step]) built[step] = stepInputs(step, remix.plan.script);
+  }
+  return { ...remix, built };
+}
 
 export const STEP_NAMES = STEPS.map((s) => s.name) as [StepName, ...StepName[]];
 
@@ -105,6 +146,7 @@ export function resetFrom(remix: Remix, from: StepName): Remix {
   const index = STEPS.findIndex((s) => s.name === from);
   const next: Remix = { ...remix, run: { state: "idle" } };
   if (from === "avatar" && remix.avatarFile) next.previousAvatarFile = remix.avatarFile;
+  if (remix.finalFile) next.previousFinalFile = remix.finalFile;
   for (const step of STEPS.slice(index)) delete next[step.output];
   if (index <= STEPS.findIndex((s) => s.name === "plan")) delete next.approvedAt;
   return next;

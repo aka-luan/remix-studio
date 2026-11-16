@@ -126,6 +126,11 @@ export type ExportRecord = {
   file: string;
   metaFile: string;
   createdAt: string;
+  /** Snapshot at export time, so the library describes the PNG even after the concept is edited or deleted. */
+  title?: string;
+  angle?: string;
+  audience?: string;
+  headline?: string;
 };
 
 export type Project = {

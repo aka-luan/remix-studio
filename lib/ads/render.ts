@@ -45,6 +45,10 @@ export async function renderPng(input: TemplateInput): Promise<Buffer> {
   const context = await (await browser()).newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
   try {
     const page = await context.newPage();
+    // Assets are inlined as data: URIs, so the only network access a render needs is Google Fonts.
+    await page.route("**/*", (route) =>
+      /^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(route.request().url()) ? route.continue() : route.abort(),
+    );
     // Google Fonts may be unreachable offline; render with fallbacks rather than failing.
     await page.setContent(renderAdHtml(input), { waitUntil: "load", timeout: 20_000 }).catch(() => undefined);
     await page.evaluate(async () => {

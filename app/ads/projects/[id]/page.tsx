@@ -35,13 +35,15 @@ export default function ProjectPage() {
   };
   const settingsDirty = JSON.stringify(settings) !== JSON.stringify({ name: p.name, audience: p.audience, brief: p.brief, referenceIds: p.referenceIds });
 
-  async function run(label: string, fn: () => Promise<Project>) {
+  async function run(label: string, fn: () => Promise<Project>): Promise<boolean> {
     setBusy(label);
     setError(null);
     try {
       update(await fn());
+      return true;
     } catch (err) {
       setError(errorText(err));
+      return false;
     } finally {
       setBusy(null);
     }
@@ -49,7 +51,8 @@ export default function ProjectPage() {
 
   const saveSettings = () => run("settings", () => api<Project>(`/api/ads/projects/${id}`, { method: "PATCH", body: JSON.stringify(settings) }));
   const generate = async (count: number, blank = false) => {
-    if (settingsDirty) await saveSettings();
+    // Don't generate from a stale brief if saving it failed.
+    if (settingsDirty && !(await saveSettings())) return;
     await run(blank ? "blank" : `gen${count}`, () => api<Project>(`/api/ads/projects/${id}/concepts`, { method: "POST", body: JSON.stringify({ count, blank }) }));
   };
 

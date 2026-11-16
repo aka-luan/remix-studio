@@ -33,9 +33,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     // Uploaded SVGs must not run scripts when opened directly.
     "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:",
     "X-Content-Type-Options": "nosniff",
-    // The preview iframe is sandboxed (opaque origin); uploaded fonts load in CORS mode.
-    "Access-Control-Allow-Origin": "*",
   });
+  // The preview iframe is sandboxed (opaque origin "null") and fonts load in CORS mode. Only fonts get the
+  // header, so other sites can't read brand data from this local server.
+  if (/^\.(woff2?|ttf|otf)$/.test(ext)) headers.set("Access-Control-Allow-Origin", "null");
   if (new URL(request.url).searchParams.has("download")) headers.set("Content-Disposition", `attachment; filename="${path.basename(file)}"`);
   return new Response(Readable.toWeb(createReadStream(file)) as ReadableStream, { headers });
 }

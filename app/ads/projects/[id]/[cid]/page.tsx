@@ -27,6 +27,7 @@ export default function EditorPage() {
   const [saveState, setSaveState] = useState<"saved" | "pending" | "saving" | "error">("saved");
   const [lastExport, setLastExport] = useState<ExportRecord[] | null>(null);
   const lastSaved = useRef<string>("");
+  const latest = useRef<string>("");
 
   const concept = project.data?.concepts.find((c) => c.id === cid);
   useEffect(() => {
@@ -36,10 +37,27 @@ export default function EditorPage() {
     }
   }, [concept, draft]);
 
+  // Leaving the editor (link, back button, closing the tab) must not drop an edit still waiting for autosave.
+  useEffect(() => {
+    const url = `/api/ads/projects/${id}/concepts/${cid}`;
+    const flushPending = () => {
+      if (latest.current && latest.current !== lastSaved.current) {
+        void fetch(url, { method: "PATCH", body: latest.current, keepalive: true });
+        lastSaved.current = latest.current;
+      }
+    };
+    window.addEventListener("pagehide", flushPending);
+    return () => {
+      window.removeEventListener("pagehide", flushPending);
+      flushPending();
+    };
+  }, [id, cid]);
+
   // Autosave edits shortly after typing stops.
   useEffect(() => {
     if (!draft) return;
     const body = JSON.stringify(draft);
+    latest.current = body;
     if (body === lastSaved.current) return;
     setSaveState("pending");
     const t = setTimeout(async () => {
@@ -149,6 +167,7 @@ export default function EditorPage() {
           </div>
           <p className="muted small-text stage-note">
             Exact HTML that Playwright renders at {W}×{H}.{" "}
+            {version && `This format uses background V${version.n} (${version.aspect}). `}
             {version && version.aspect !== fmtAspect && `Background is ${version.aspect} and is cropped to fit; generate a ${fmtAspect} version for this format.`}
             {format === "story" && " Shaded bands mark the areas Stories UI covers."}
           </p>

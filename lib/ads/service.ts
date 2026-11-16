@@ -1,7 +1,7 @@
 import { adsStatus, AiError, buildImagePrompt, generateConcepts, generateImage } from "./ai";
 import { dataUri, renderPng } from "./render";
 import { listProjects, listReferences, loadBrand, loadProject, newId, shortId, updateProject, writeProjectFile } from "./store";
-import { screenshotFor, templateInputFor, versionFor } from "./templates";
+import { filesFor, safeLayout, templateInputFor, versionFor } from "./templates";
 import {
   FORMATS,
   PLACEMENTS,
@@ -107,7 +107,7 @@ export async function patchConcept(projectId: string, conceptId: string, patch: 
     if (i < 0) throw new UserError("Concept not found", 404);
     const clean = Object.fromEntries(Object.entries(patch).filter(([k]) => EDITABLE.includes(k as keyof Concept)));
     const next = { ...p.concepts[i], ...clean } as Concept;
-    if (patch.layout) next.layout = { ...p.concepts[i].layout, ...patch.layout };
+    if (patch.layout) next.layout = safeLayout({ ...p.concepts[i].layout, ...patch.layout });
     if (next.selectedVersionId && !next.versions.some((v) => v.id === next.selectedVersionId)) throw new UserError("Unknown image version");
     const concepts = [...p.concepts];
     concepts[i] = next;
@@ -134,15 +134,20 @@ export async function generateVersion(projectId: string, conceptId: string, opts
   const refs = concept.imageRefs.filter((f) => valid.has(f) && !/\.(svg|ttf|otf|woff2?)$/i.test(f));
   // The no-text and palette rules are always appended, even to a custom prompt.
   const prompt = buildImagePrompt({ ...concept, imagePrompt: opts.prompt?.trim() || concept.imagePrompt }, brand, opts.aspect, refs.length > 0);
-  const n = Math.max(0, ...concept.versions.map((v) => v.n)) + 1;
-  const image = await generateImage({ prompt, aspect: opts.aspect, refs, brand, seedLabel: `${concept.id}-${n}-${Date.now()}` });
-  const file = await writeProjectFile(projectId, "images", `${concept.id}-v${n}-${shortId()}${image.ext}`, image.data);
-  const version = { id: shortId(), n, file, prompt, aspect: opts.aspect, createdAt: new Date().toISOString(), mock: image.mock };
+  const image = await generateImage({ prompt, aspect: opts.aspect, refs, brand, seedLabel: `${concept.id}-${Date.now()}` });
+  const file = await writeProjectFile(projectId, "images", `${concept.id}-${shortId()}${image.ext}`, image.data);
   const updated = await updateProject(projectId, (p) => ({
     ...p,
-    concepts: p.concepts.map((c) => (c.id === conceptId ? { ...c, versions: [...c.versions, version], selectedVersionId: version.id } : c)),
+    concepts: p.concepts.map((c) => {
+      if (c.id !== conceptId) return c;
+      // Numbered inside the lock so concurrent generations get distinct version numbers.
+      const n = Math.max(0, ...c.versions.map((v) => v.n)) + 1;
+      const version = { id: shortId(), n, file, prompt, aspect: opts.aspect, createdAt: new Date().toISOString(), mock: image.mock };
+      return { ...c, versions: [...c.versions, version], selectedVersionId: version.id };
+    }),
   }));
-  return updated!;
+  if (!updated) throw new UserError("Project not found", 404);
+  return updated;
 }
 
 export async function exportConcept(projectId: string, conceptId: string, formats: FormatId[]): Promise<{ project: Project; exports: ExportRecord[] }> {
@@ -154,16 +159,14 @@ export async function exportConcept(projectId: string, conceptId: string, format
   const wanted = FORMATS.filter((f) => formats.includes(f.id));
   if (!wanted.length) throw new UserError("Pick at least one format.");
 
-  const files = [...concept.versions.map((v) => v.file), brand.logoFile, screenshotFor(brand, concept), ...brand.assets.filter((a) => a.kind === "font").map((a) => a.file)].filter(
-    (f): f is string => Boolean(f),
-  );
+  const files = [...new Set(wanted.flatMap((f) => filesFor(brand, concept, f.id)))];
   const inlined = new Map(await Promise.all(files.map(async (f) => [f, await dataUri(f)] as const)));
   const status = adsStatus();
 
   const records: ExportRecord[] = [];
   for (const f of wanted) {
     const version = versionFor(concept, f.id);
-    const variant = `V${version?.n ?? 0}-${concept.layout.template}`;
+    const variant = `V${version?.n ?? 0}-${safeLayout(concept.layout).template}`;
     const png = await renderPng(templateInputFor(brand, concept, f.id, (rel) => inlined.get(rel) ?? ""));
     const base = `${concept.id}-${variant}-${f.id}`;
     const meta: ExportMetadata = {
@@ -178,7 +181,7 @@ export async function exportConcept(projectId: string, conceptId: string, format
       awarenessStage: concept.awarenessStage,
       copy: { hook: concept.hook, headline: concept.headline, supportingCopy: concept.supportingCopy, primaryText: concept.primaryText, cta: concept.cta },
       hypothesis: concept.hypothesis,
-      template: concept.layout.template,
+      template: safeLayout(concept.layout).template,
       image: { versionId: version?.id ?? null, prompt: version?.prompt ?? null, mock: version?.mock ?? false, model: version && !version.mock ? status.imageModel : null },
       language: "pt-BR",
       exportedAt: new Date().toISOString(),
@@ -192,6 +195,10 @@ export async function exportConcept(projectId: string, conceptId: string, format
       file: await writeProjectFile(projectId, "exports", `${base}.png`, png),
       metaFile: await writeProjectFile(projectId, "exports", `${base}.json`, JSON.stringify(meta, null, 2)),
       createdAt: meta.exportedAt,
+      title: concept.title,
+      angle: concept.angle,
+      audience: concept.audience,
+      headline: concept.headline,
     });
   }
   const updated = await updateProject(projectId, (p) => ({
@@ -206,8 +213,7 @@ export async function libraryItems(): Promise<LibraryItem[]> {
   return projects
     .flatMap((p) =>
       p.exports.map((e) => {
-        const c = p.concepts.find((x) => x.id === e.conceptId);
-        return { ...e, projectId: p.id, projectName: p.name, title: c?.title ?? e.conceptId, angle: c?.angle ?? "", audience: c?.audience ?? "", headline: c?.headline ?? "" };
+        return { ...e, projectId: p.id, projectName: p.name, title: e.title ?? e.conceptId, angle: e.angle ?? "", audience: e.audience ?? "", headline: e.headline ?? "" };
       }),
     )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));

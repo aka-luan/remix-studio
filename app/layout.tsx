@@ -16,7 +16,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/" className="brand">
               Remix Studio
             </Link>
-            <span className="tagline">Copy what's working. Swap in your product.</span>
+            <nav className="topnav">
+              <Link href="/">Video remixes</Link>
+              <Link href="/ads">Ad Studio</Link>
+            </nav>
           </div>
         </header>
         <main>{children}</main>

@@ -37,6 +37,23 @@ A Google AI Pro subscription includes $10 a month of Google Cloud credits that p
 
 Optional settings: `PLANNER=claude` with `ANTHROPIC_API_KEY` (about $0.04 per script with `claude-sonnet-5-5`), and model overrides `GEMINI_TEXT_MODEL` (default `gemini-flash-latest`), `GEMINI_IMAGE_MODEL` (default `gemini-nano-banana-2.1`) and `GEMINI_VIDEO_MODEL` (default `gemini-omni-1.1-flash`).
 
+## Ad Studio (static Meta ads)
+
+Open **Ad Studio** in the top bar (`/ads`). It makes static image ads for MandaFoto (or any brand you set up) in Brazilian Portuguese.
+
+1. **Brand profile.** Product description, audiences, tone, colors, fonts, logo, real product screenshots and brand photos. **Verified features** and **verified pricing** are the only claims concepts may make. Pricing starts empty, so ads never mention price until you fill it in.
+2. **References.** Upload screenshots of ads you collected yourself. Nothing is scraped from the Meta Ad Library. Gemini describes the hook, headline, composition, emotional appeal, value proposition, CTA and buyer-awareness stage, plus a hypothesis about why it *may* work. A screenshot cannot show results, so performance is never claimed. Only this written analysis informs concepts. Reference images are never sent to the image model.
+3. **Concepts.** Create a project in the sidebar and generate 1 or 6 concepts. Each one has an ID, title, angle, hook, visual, primary text, headline, CTA and a hypothesis to test. Edit them, then **Approve**. The server refuses image generation for concepts that are not approved. Copy is scanned for numbers, prices, discounts, testimonials and superlatives that aren't in your verified facts.
+4. **Images.** Nano Banana (`GEMINI_IMAGE_MODEL`) makes text-free photo backgrounds in 4:5, 9:16 or 1:1, optionally using your brand photos or screenshots as references. Every prompt forbids text, logos and UI. Generate as many versions as you like and pick one. Each format uses a version in its own aspect ratio when one exists.
+5. **Editor & export.** HTML/CSS templates (full-bleed photo, photo + color panel, product screenshot in a phone frame) compose the headline, supporting copy, logo and CTA as real text. The preview is the same HTML that Playwright renders to PNG: Feed 1080×1350, Stories 1080×1920 (text kept out of the Stories UI zones) and Square 1080×1080. Each PNG gets a JSON file with the concept ID, angle, audience, copy, variant, template and image prompt.
+6. **Library.** Every export, filterable by audience, angle, format and project.
+
+Everything is saved under `data/ads/` (`brand.json`, `assets/`, `references/`, `projects/<id>/images|exports`).
+
+Rendering uses `playwright-core` with Playwright's Chromium. Install it once with `npx playwright-core install chromium` (on Windows PowerShell, `npx.cmd`). If that's missing, the app falls back to Microsoft Edge.
+
+**Mock mode.** Set `ADS_MOCK=1` in `.env.local`, or leave `GEMINI_API_KEY` empty, and concepts, analyses and backgrounds become placeholders, so you can try the whole flow without spending credits. Exports still render real PNGs. The sidebar shows whether you are in mock mode or live. Gemini calls retry with backoff on rate limits, 5xx and network errors. A blocked or empty image is shown to you instead of retried.
+
 ## Notes
 
 - TikTok and Instagram sometimes block yt-dlp. Update it with `brew upgrade yt-dlp`, or use **Upload the video file instead** on the form.

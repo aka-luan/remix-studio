@@ -213,7 +213,17 @@ export async function libraryItems(): Promise<LibraryItem[]> {
   return projects
     .flatMap((p) =>
       p.exports.map((e) => {
-        return { ...e, projectId: p.id, projectName: p.name, title: e.title ?? e.conceptId, angle: e.angle ?? "", audience: e.audience ?? "", headline: e.headline ?? "" };
+        // Older exports have no snapshot; fall back to the concept as it is now.
+        const c = e.title === undefined ? p.concepts.find((x) => x.id === e.conceptId) : undefined;
+        return {
+          ...e,
+          projectId: p.id,
+          projectName: p.name,
+          title: e.title ?? c?.title ?? e.conceptId,
+          angle: e.angle ?? c?.angle ?? "",
+          audience: e.audience ?? c?.audience ?? "",
+          headline: e.headline ?? c?.headline ?? "",
+        };
       }),
     )
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
